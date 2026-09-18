@@ -1,4 +1,6 @@
-FROM python:3.12-slim
+# TgCrypto 1.2.5 publishes a Linux wheel for CPython 3.10. Using that wheel
+# keeps the runtime image small and avoids needing GCC during the build.
+FROM python:3.10-slim
 
 WORKDIR /app
 
