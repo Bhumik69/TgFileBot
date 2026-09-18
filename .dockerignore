@@ -1,0 +1,11 @@
+.env
+*.session*
+*.db
+*.log
+*.pid
+pid.txt
+__pycache__/
+*.py[cod]
+.venv/
+.git/
+.claude/

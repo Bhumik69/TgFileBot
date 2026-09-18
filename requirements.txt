@@ -1,0 +1,13 @@
+# Telegram
+pyrogram==2.0.106
+TgCrypto==1.2.5          # fast crypto for Pyrogram (optional but recommended)
+
+# AWS / Cloudflare R2 (S3-compatible)
+boto3==1.34.69
+botocore==1.34.69
+
+# Async SQLite
+aiosqlite==0.20.0
+
+# Environment
+python-dotenv==1.0.1
