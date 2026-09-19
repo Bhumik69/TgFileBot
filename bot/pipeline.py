@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from typing import AsyncIterator
 
 from pyrogram import Client
+from pyrogram.errors import MessageNotModified
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from config import config
@@ -41,6 +42,16 @@ stopped_uploads: dict[int, Message] = {}
 
 # How often to update the progress message, in seconds.
 PROGRESS_INTERVAL = 3.0
+
+
+async def _edit_status(status_msg: Message, text: str, **kwargs) -> None:
+    """Edit a status message without aborting an upload on a duplicate update."""
+    try:
+        await status_msg.edit_text(text, **kwargs)
+    except MessageNotModified:
+        # Rounded progress values can produce the same text twice. Telegram
+        # reports that as an error even though the desired status is present.
+        logger.debug("Skipped unchanged status message")
 
 
 async def process_file(client: Client, message: Message) -> None:
@@ -67,13 +78,14 @@ async def process_file(client: Client, message: Message) -> None:
         stopped_uploads.pop(user_id, None)
     except asyncio.CancelledError:
         stopped_uploads[user_id] = message
-        await status_msg.edit_text(
+        await _edit_status(
+            status_msg,
             "Upload stopped.\n"
             "Send /resume to start this file again from the beginning."
         )
     except Exception as exc:
         logger.exception("Pipeline failed for file_id=%s", info.file_id)
-        await status_msg.edit_text(f"Upload failed: {exc}")
+        await _edit_status(status_msg, f"Upload failed: {exc}")
     finally:
         if active_uploads.get(user_id) is state:
             active_uploads.pop(user_id, None)
@@ -88,7 +100,7 @@ async def _run_pipeline(
 ) -> None:
     r2 = R2Client()
 
-    await status_msg.edit_text("Checking for duplicates...")
+    await _edit_status(status_msg, "Checking for duplicates...")
 
     sha256 = hashlib.sha256()
     total_bytes = 0
@@ -107,7 +119,8 @@ async def _run_pipeline(
             if now - last_update >= PROGRESS_INTERVAL:
                 pct = (total_bytes / info.file_size * 100) if info.file_size else 0
                 speed = total_bytes / max(now - start_time, 0.001)
-                await status_msg.edit_text(
+                await _edit_status(
+                    status_msg,
                     f"Uploading... {pct:.1f}%\n"
                     f"{human_size(total_bytes)} / {human_size(info.file_size)}\n"
                     f"Speed: {human_size(int(speed))}/s"
@@ -134,7 +147,8 @@ async def _run_pipeline(
         await r2.delete_object(object_key)
         object_key = existing["object_key"]
         url = f"{config.r2_public_url}/{object_key}"
-        await status_msg.edit_text(
+        await _edit_status(
+            status_msg,
             f"Already uploaded (duplicate detected)\n\n"
             f"File Name: `{info.file_name}`\n"
             f"File Size: {human_size(info.file_size)}\n"
@@ -156,7 +170,8 @@ async def _run_pipeline(
     elapsed = time.monotonic() - start_time
     avg_speed = total_bytes / max(elapsed, 0.001)
 
-    await status_msg.edit_text(
+    await _edit_status(
+        status_msg,
         f"Uploaded Successfully\n\n"
         f"File Name: `{info.file_name}`\n"
         f"File Size: {human_size(info.file_size)}\n"
